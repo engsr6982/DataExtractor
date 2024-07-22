@@ -42,6 +42,8 @@
 #include <mc/world/level/block/Block.h>
 #include <mc/world/level/block/VanillaBlockTags.h>
 #include <mc/world/level/block/registry/BlockTypeRegistry.h>
+#include <mc/world/level/block/states/BlockState.h>
+
 
 // Level
 #include <mc/world/level/BlockPalette.h>
@@ -78,6 +80,13 @@
 namespace plugin {
 
 static std::unique_ptr<Plugin> instance;
+Plugin&                        Plugin::getInstance() { return *instance; }
+bool                           Plugin::load() { return true; }
+bool                           Plugin::disable() { return true; }
+
+
+using json = nlohmann::json;
+
 
 bool folderExists(const std::string& folderName) {
     struct stat info {};
@@ -95,115 +104,104 @@ void createFolder(const ll::Logger& logger, const std::string& folderName) {
     }
 }
 
-void writeJSON(const std::string& fileName, const CompoundTag& tag) {
-    std::string compressed = tag.toSnbt();
+void writeJSON(const std::string& fileName, json const& tag) {
+    std::string compressed = tag.dump(4);
     auto        out        = std::ofstream(fileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
     out << compressed;
     out.close();
 }
 
-void dumpItem(ListTag& dest, const Item& item, const ll::Logger& logger) {
-    auto nbt = CompoundTag();
+void dumpItem(json& dest, const Item& item, const ll::Logger& logger) {
     logger.info("Dumping item - " + item.getFullItemName());
-    nbt.putShort("id", item.getId());
-    try {
-        if (!item.getLegacyBlock().expired() && item.getLegacyBlock().get() != nullptr)
-            nbt.putString(
-                "blockId",
-                item.getLegacyBlock()->getNamespace() + ":" + item.getLegacyBlock()->getRawNameId()
-            );
-    } catch (std::exception& e) {
-        logger.warn("Exception occur when trying to get block for item " + item.getFullItemName());
-    }
-    nbt.putBoolean("isComponentBased", item.isComponentBased());
-    nbt.putString("name", item.getFullItemName());
-    nbt.putShort("maxDamage", item.getMaxDamage());
-    nbt.putBoolean("isBlockPlanterItem", item.isBlockPlanterItem());
-    nbt.putBoolean("isDamageable", item.isDamageable());
-    nbt.putBoolean("isDye", item.isDye());
-    nbt.putString("itemColorName", ItemColorUtil::getName(item.getItemColor()));
-    nbt.putInt("itemColorRGB", ItemColorUtil::getRGBColor(item.getItemColor()));
-    nbt.putBoolean("isFertilizer", item.isFertilizer());
-    nbt.putBoolean("isThrowable", item.isThrowable());
-    nbt.putBoolean("isUseable", item.isUseable());
-    nbt.putBoolean("isElytra", item.isElytra());
-    nbt.putBoolean("canBeDepleted", item.canBeDepleted());
-    nbt.putBoolean("canDestroyInCreative", item.canDestroyInCreative());
-    nbt.putBoolean("canUseOnSimTick", item.canUseOnSimTick());
-    nbt.putBoolean("canBeCharged", item.canBeCharged());
-    nbt.putString("creativeGroup", item.getCreativeGroup());
-    nbt.putInt("creativeCategory", static_cast<int>(item.getCreativeCategory()));
-    nbt.putInt("armorValue", item.getArmorValue());
-    nbt.putInt("attackDamage", item.getAttackDamage());
-    nbt.putInt("toughnessValue", item.getToughnessValue());
-    nbt.putFloat("viewDamping", item.getViewDamping());
-    nbt.putInt("cooldownTime", item.getCooldownTime());
-    nbt.putString("cooldownType", item.getCooldownType().getString());
-    nbt.putInt("maxStackSize", item.getMaxStackSize(item.buildDescriptor(0, nullptr)));
-    CompoundTag           descriptionId;
-    std::set<std::string> uniqueStr;
-    for (int i = 0; i <= 256; ++i) {
+    json it = json::object();
+
+    // MetaData - 基础属性
+    it["id"]               = item.getId();                                    // 物品 ID
+    it["name"]             = item.getFullItemName();                          // 全名
+    it["maxDamage"]        = item.getMaxDamage();                             // 最大耐久度
+    it["isDamageable"]     = item.isDamageable();                             // 是否可损坏
+    it["itemColorName"]    = ItemColorUtil::getName(item.getItemColor());     // 颜色名称
+    it["itemColorRGB"]     = ItemColorUtil::getRGBColor(item.getItemColor()); // RGB 颜色
+    it["isFertilizer"]     = item.isFertilizer();                             // 是否是肥料
+    it["isThrowable"]      = item.isThrowable();                              // 是否可投掷
+    it["isUseable"]        = item.isUseable();                                // 是否可使用
+    it["creativeGroup"]    = item.getCreativeGroup();                         // 创造组
+    it["creativeCategory"] = static_cast<int>(item.getCreativeCategory());    // 创造类别
+    it["armorValue"]       = item.getArmorValue();                            // 护甲值
+    it["attackDamage"]     = item.getAttackDamage();                          // 攻击力
+    it["toughnessValue"]   = item.getToughnessValue();                        // 防御值
+    it["viewDamping"]      = item.getViewDamping();                           // 视距阻尼
+    it["cooldownTime"]     = item.getCooldownTime();                          // 冷却时间
+    it["cooldownType"]     = item.getCooldownType().getString();              // 冷却类型
+
+    // MetaData - 特殊值
+    json sub = json::array();
+    for (int i = 0; i <= 256; ++i) { // 0 ~ 256 穷举特殊值
         try {
             if (item.isValidAuxValue(i)) {
-                if (const auto itemStack = ItemStack(item, 1, i); !uniqueStr.contains(itemStack.getDescriptionId())) {
-                    uniqueStr.insert(itemStack.getDescriptionId());
-                    descriptionId.putString(std::to_string(i), itemStack.getDescriptionId());
-                }
+                const auto st = ItemStack(item, 1, i);
+                json       j  = json::object();
+
+                // Item - 详细数据
+                j["aux"]             = st.getAuxValue();        // 特殊值
+                j["categoryName"]    = st.getCategoryName();    // 组名称
+                j["customName"]      = st.getCustomName();      // 自定义名称
+                j["descriptionName"] = st.getDescriptionName(); // 描述名称
+                j["effectName"]      = st.getEffectName();      // 效果名称
+                j["hoverName"]       = st.getHoverName();       // 鼠标悬停名称
+
+                sub.push_back(j);
             }
         } catch (...) {}
     }
-    nbt.putCompound("descriptionId", descriptionId);
-    dest.add(nbt);
+
+    try {
+        if (!item.getLegacyBlock().expired() && item.getLegacyBlock().get() != nullptr)
+            it["blockId"] = item.getLegacyBlock()->getNamespace() + ":" + item.getLegacyBlock()->getRawNameId();
+    } catch (std::exception& e) {
+        logger.warn("Exception occur when trying to get block for item " + item.getFullItemName());
+    }
+
+    dest.push_back(it);
 }
 
 void dumpItemData(const ll::Logger& logger) {
-    auto  tag     = CompoundTag();
-    auto  list    = ListTag();
-    short counter = 0;
+    json list    = json::array(); // 全部物品数据
+    int  counter = 0;
     for (const auto& item : ItemRegistryManager::getItemRegistry().getNameToItemMap() | std::views::values) {
         dumpItem(list, *item, logger);
         counter++;
     }
-    tag.put("item", list);
     logger.info("Dump " + std::to_string(counter) + " item data successfully!");
-    writeJSON("data/item_data.snbt", tag);
-    logger.info(R"(Items' data have is to "data/item_data.snbt")");
+
+    // Pack data
+    json dest     = json::object();
+    dest["items"] = list;
+    dest["tr"]    = json::object(); // TODO: 翻译数据
+
+    writeJSON("data/item_data.json", dest);
+    logger.info(R"(Items' data have is to "data/item_data.json")");
 }
 
-void ext(const ll::Logger& logger) {
-    if (!folderExists("data")) {
-        createFolder(logger, "data");
-    }
-    dumpItemData(logger);
-}
-
-Plugin& Plugin::getInstance() { return *instance; }
-
-bool Plugin::load() {
-    getSelf().getLogger().info("Loading...");
-    return true;
-}
 
 bool Plugin::enable() {
     auto& logger = getSelf().getLogger();
     logger.info("Enabling...");
 
-    // TODO: It seems not works, replaced with TextPacket hook. Need to fix it in the future
     ll::command::CommandRegistrar::getInstance()
         .getOrCreateCommand("ext", "extract data", CommandPermissionLevel::GameDirectors, CommandFlagValue::None)
         .overload()
         .execute([&](CommandOrigin const&, CommandOutput& output) {
-            ext(logger);
+            if (!folderExists("data")) {
+                createFolder(logger, "data");
+            }
+            dumpItemData(logger);
             output.success("Success!");
         });
 
     return true;
 }
 
-bool Plugin::disable() {
-    getSelf().getLogger().info("Disabling...");
-    return true;
-}
 } // namespace plugin
 
 LL_REGISTER_PLUGIN(plugin::Plugin, plugin::instance);
