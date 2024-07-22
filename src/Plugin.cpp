@@ -116,23 +116,17 @@ void dumpItem(json& dest, const Item& item, const ll::Logger& logger) {
     json it = json::object();
 
     // MetaData - 基础属性
-    it["id"]               = item.getId();                                    // 物品 ID
-    it["name"]             = item.getFullItemName();                          // 全名
-    it["maxDamage"]        = item.getMaxDamage();                             // 最大耐久度
-    it["isDamageable"]     = item.isDamageable();                             // 是否可损坏
-    it["itemColorName"]    = ItemColorUtil::getName(item.getItemColor());     // 颜色名称
-    it["itemColorRGB"]     = ItemColorUtil::getRGBColor(item.getItemColor()); // RGB 颜色
-    it["isFertilizer"]     = item.isFertilizer();                             // 是否是肥料
-    it["isThrowable"]      = item.isThrowable();                              // 是否可投掷
-    it["isUseable"]        = item.isUseable();                                // 是否可使用
-    it["creativeGroup"]    = item.getCreativeGroup();                         // 创造组
-    it["creativeCategory"] = static_cast<int>(item.getCreativeCategory());    // 创造类别
-    it["armorValue"]       = item.getArmorValue();                            // 护甲值
-    it["attackDamage"]     = item.getAttackDamage();                          // 攻击力
-    it["toughnessValue"]   = item.getToughnessValue();                        // 防御值
-    it["viewDamping"]      = item.getViewDamping();                           // 视距阻尼
-    it["cooldownTime"]     = item.getCooldownTime();                          // 冷却时间
-    it["cooldownType"]     = item.getCooldownType().getString();              // 冷却类型
+    it["id"]             = item.getId();             // 物品 ID
+    it["name"]           = item.getFullItemName();   // 全名
+    it["maxDamage"]      = item.getMaxDamage();      // 最大耐久度
+    it["isDamageable"]   = item.isDamageable();      // 是否可损坏
+    it["isFertilizer"]   = item.isFertilizer();      // 是否是肥料
+    it["isThrowable"]    = item.isThrowable();       // 是否可投掷
+    it["isUseable"]      = item.isUseable();         // 是否可使用
+    it["armorValue"]     = item.getArmorValue();     // 护甲值
+    it["attackDamage"]   = item.getAttackDamage();   // 攻击力
+    it["toughnessValue"] = item.getToughnessValue(); // 防御值
+    it["cooldownTime"]   = item.getCooldownTime();   // 冷却时间
 
     // MetaData - 特殊值
     json sub = json::array();
@@ -143,25 +137,21 @@ void dumpItem(json& dest, const Item& item, const ll::Logger& logger) {
                 json       j  = json::object();
 
                 // Item - 详细数据
+                j["name"]            = st.getName();            // 物品名称
+                j["typeName"]        = st.getTypeName();        // 物品类型名称
                 j["aux"]             = st.getAuxValue();        // 特殊值
                 j["categoryName"]    = st.getCategoryName();    // 组名称
                 j["customName"]      = st.getCustomName();      // 自定义名称
                 j["descriptionName"] = st.getDescriptionName(); // 描述名称
                 j["effectName"]      = st.getEffectName();      // 效果名称
-                j["hoverName"]       = st.getHoverName();       // 鼠标悬停名称
+                // j["hoverName"]       = st.getHoverName();       // 鼠标悬停名称
 
                 sub.push_back(j);
             }
         } catch (...) {}
     }
 
-    try {
-        if (!item.getLegacyBlock().expired() && item.getLegacyBlock().get() != nullptr)
-            it["blockId"] = item.getLegacyBlock()->getNamespace() + ":" + item.getLegacyBlock()->getRawNameId();
-    } catch (std::exception& e) {
-        logger.warn("Exception occur when trying to get block for item " + item.getFullItemName());
-    }
-
+    it["auxs"] = sub; // 特殊值列表
     dest.push_back(it);
 }
 
