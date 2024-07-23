@@ -47,6 +47,7 @@
 #include <mc/world/level/material/Material.h>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -94,10 +95,20 @@ size_t hash(ItemStack const& it) {
     );
 }
 
+std::string fixName(std::string const& n) {
+    // 使用正则表达式移除开头和结尾的颜色代码
+    std::regex  pattern(R"(^§[0-9a-fk-or](.+?)§r$)");
+    std::smatch matches;
+
+    if (std::regex_search(n, matches, pattern)) {
+        return matches[1].str();
+    }
+
+    // 如果没有匹配,返回原始字符串
+    return n;
+}
 
 void dumpItem(json& array, const Item& item, const ll::Logger& logger) {
-    logger.info("Dumping item - " + item.getFullItemName());
-
     std::unordered_set<size_t> uniqueAuxs;
     for (int i = 0; i <= 256; ++i) { // 0 ~ 256 穷举特殊值
         try {
@@ -109,14 +120,15 @@ void dumpItem(json& array, const Item& item, const ll::Logger& logger) {
 
                 json j = json::object();
 
+                j["id"]              = _fakeItem.getId();              // 物品ID
+                j["aux"]             = _fakeItem.getAuxValue();        // 特殊值
                 j["name"]            = _fakeItem.getName();            // 物品名称
                 j["typeName"]        = _fakeItem.getTypeName();        // 物品类型名称
                 j["fullName"]        = item.getFullItemName();         // 全名
-                j["aux"]             = _fakeItem.getAuxValue();        // 特殊值
-                j["id"]              = _fakeItem.getId();              // 物品ID
-                j["categoryName"]    = _fakeItem.getCategoryName();    // 组名称
                 j["descriptionName"] = _fakeItem.getDescriptionName(); // 描述名称
-                j["effectName"]      = _fakeItem.getEffectName();      // 效果名称
+
+                j["effectName"]   = fixName(_fakeItem.getEffectName());   // 效果名称
+                j["categoryName"] = fixName(_fakeItem.getCategoryName()); // 组名称
 
                 array.push_back(j);
             }
@@ -127,15 +139,32 @@ void dumpItem(json& array, const Item& item, const ll::Logger& logger) {
 }
 
 void dumpItemData(const ll::Logger& logger) {
-    json datas     = json::object();
-    datas["items"] = json::array();
+    json datas        = json::object();
+    datas["items"]    = json::array();
+    datas["category"] = json::array();
 
     // Dump item data
-    auto& list    = datas["items"];
-    int   counter = 0;
+    int counter = 0;
     for (const auto& item : ItemRegistryManager::getItemRegistry().getNameToItemMap() | std::views::values) {
-        dumpItem(list, *item, logger);
+        logger.info("[{}] Dumping item - {}", std::to_string(counter), item->getFullItemName());
+        dumpItem(datas["items"], *item, logger);
         counter++;
+    }
+    logger.info("Dump " + std::to_string(counter) + " item data successfully!");
+
+    // category - 提取物品分类（去重）
+    logger.info("Filter items' category...");
+    std::unordered_set<std::string> uniqueCategories;
+    for (const auto& item : datas["items"]) {
+        if (item.contains("categoryName")) {
+            std::string category = item["categoryName"];
+            if (!category.empty()) {
+                uniqueCategories.insert(category);
+            }
+        }
+    }
+    for (const auto& category : uniqueCategories) {
+        datas["category"].push_back(category);
     }
 
     // i18n
@@ -145,14 +174,13 @@ void dumpItemData(const ll::Logger& logger) {
         {"fullName",        "全名"      },
         {"aux",             "特殊值"   },
         {"id",              "物品ID"    },
-        {"categoryName",    "组名称"   },
+        {"categoryName",    "类别名称"},
         {"descriptionName", "描述名称"},
         {"effectName",      "效果名称"}
     };
 
-    logger.info("Dump " + std::to_string(counter) + " item data successfully!");
-    writeJSON("plugins/DataExtractor/item_data.json", datas);
-    logger.info(R"(Items' data have is to "plugins/DataExtractor/item_data.json")");
+    writeJSON("plugins/DataExtractor/Item.json", datas);
+    logger.info(R"(Items' data have is to "plugins/DataExtractor/Item.json")");
 }
 
 
