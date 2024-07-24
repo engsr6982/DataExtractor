@@ -1,4 +1,4 @@
-#include "ll/api/plugin/RegisterHelper.h"
+#include "ll/api/mod/RegisterHelper.h"
 #include "mc/server/commands/ServerCommandOrigin.h"
 #include "mc/world/item/components/ComponentItem.h"
 #include "mc/world/item/enchanting/Enchant.h"
@@ -14,7 +14,6 @@
 #include <ll/api/command/CommandHandle.h>
 #include <ll/api/command/CommandRegistrar.h>
 #include <ll/api/memory/Hook.h>
-#include <ll/api/plugin/NativePlugin.h>
 #include <ll/api/service/Bedrock.h>
 #include <mc/common/Brightness.h>
 #include <mc/enums/MaterialType.h>
@@ -210,4 +209,4 @@ bool Plugin::enable() {
 
 } // namespace plugin
 
-LL_REGISTER_PLUGIN(plugin::Plugin, plugin::instance);
+LL_REGISTER_MOD(plugin::Plugin, plugin::instance);

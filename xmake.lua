@@ -7,7 +7,7 @@ if not has_config("vs_runtime") then
 end
 
 -- Latest release
-add_requires("levilamina 0.13.3")
+add_requires("levilamina 0.13.4")
 
 
 target("DataExtractor") -- Change this to your plugin name.
