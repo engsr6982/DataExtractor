@@ -1,9 +1,11 @@
+#include "ll/api/Logger.h"
 #include "ll/api/mod/RegisterHelper.h"
 #include "mc/server/commands/ServerCommandOrigin.h"
 #include "mc/world/item/components/ComponentItem.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantUtils.h"
 #include <Plugin.h>
+#include <cstddef>
 #include <cstdlib>
 #include <direct.h>
 #include <filesystem>
@@ -30,6 +32,10 @@
 #include <mc/world/item/ItemInstance.h>
 #include <mc/world/item/ItemTag.h>
 #include <mc/world/item/VanillaItemTags.h>
+#include <mc/world/item/enchanting/Enchant.h>
+#include <mc/world/item/enchanting/EnchantUtils.h>
+#include <mc/world/item/enchanting/EnchantmentInstance.h>
+#include <mc/world/item/enchanting/ItemEnchants.h>
 #include <mc/world/item/registry/CreativeItemRegistry.h>
 #include <mc/world/item/registry/ItemRegistryManager.h>
 #include <mc/world/item/registry/ItemRegistryRef.h>
@@ -87,10 +93,10 @@ void writeJSON(const std::string& fileName, json const& tag) {
     out.close();
 }
 
-size_t hash(ItemStack const& it) {
+size_t hash(ItemStack const& it, std::string const& enchantData = "") {
     return std::hash<std::string>()(
         it.getTypeName() + it.getEffectName() + it.getDescriptionName() + it.getName() + std::to_string(it.getId())
-        + it.getRawNameId()
+        + it.getRawNameId() + enchantData
     );
 }
 
@@ -107,29 +113,57 @@ std::string fixName(std::string const& n) {
     return n;
 }
 
+
+void dumpItemStack(json& obj, ItemStack const& stack, ll::Logger const& logget, std::string const& enchantData = "") {
+    obj["id"]              = stack.getId();              // 物品ID
+    obj["aux"]             = stack.getAuxValue();        // 特殊值
+    obj["name"]            = stack.getName();            // 物品名称
+    obj["typeName"]        = stack.getTypeName();        // 物品类型名称
+    obj["descriptionName"] = stack.getDescriptionName(); // 描述名称
+
+    obj["effectName"]   = fixName(stack.getEffectName());   // 效果名称
+    obj["categoryName"] = fixName(stack.getCategoryName()); // 组名称
+    obj["enchantData"]  = enchantData;                      // 附魔数据
+}
+
+
 void dumpItem(json& array, const Item& item, const ll::Logger& logger) {
     std::unordered_set<size_t> uniqueAuxs;
     for (int i = 0; i <= 256; ++i) { // 0 ~ 256 穷举特殊值
         try {
             if (item.isValidAuxValue(i)) {
-                auto       _fakeItem = ItemStack(item, 1, i);
-                auto const hashed    = hash(_fakeItem);
-                if (uniqueAuxs.contains(hashed)) continue;
-                uniqueAuxs.insert(hashed);
+                ItemStack stack(item, 1, i);
+                if (!stack.isValid()) {
+                    logger.warn("Valid aux value but invalid item stack: {}:{}", stack.getTypeName(), i);
+                    continue;
+                }
 
-                json j = json::object();
+                size_t hashed;
+                json   v      = json::object();
+                v["fullName"] = item.getFullItemName();
 
-                j["id"]              = _fakeItem.getId();              // 物品ID
-                j["aux"]             = _fakeItem.getAuxValue();        // 特殊值
-                j["name"]            = _fakeItem.getName();            // 物品名称
-                j["typeName"]        = _fakeItem.getTypeName();        // 物品类型名称
-                j["fullName"]        = item.getFullItemName();         // 全名
-                j["descriptionName"] = _fakeItem.getDescriptionName(); // 描述名称
+                ItemEnchants _ens = stack.constructItemEnchantsFromUserData();
+                auto         es   = _ens.getAllEnchants();
+                if (!es.empty()) {
+                    // 附魔物品
+                    // for (auto const& e : es) {
+                    //     auto type  = e.getEnchantType();
+                    //     auto level = e.getEnchantLevel();
+                    //     auto des   = EnchantUtils::getEnchantNameAndLevel(type, level);
+                    //     hashed     = hash(stack, des);
+                    //     if (uniqueAuxs.contains(hashed)) continue;
+                    //     uniqueAuxs.insert(hashed);
+                    //     dumpItemStack(v, stack, logger, des);
+                    // }
+                } else {
+                    // 普通物品
+                    hashed = hash(stack);
+                    if (uniqueAuxs.contains(hashed)) continue;
+                    uniqueAuxs.insert(hashed);
+                    dumpItemStack(v, stack, logger);
+                }
 
-                j["effectName"]   = fixName(_fakeItem.getEffectName());   // 效果名称
-                j["categoryName"] = fixName(_fakeItem.getCategoryName()); // 组名称
-
-                array.push_back(j);
+                array.push_back(v);
             }
         } catch (...) {
             logger.error("Failed to dump item - " + item.getFullItemName());
